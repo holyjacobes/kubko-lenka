@@ -5,13 +5,13 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
     <title>Kubko & Lenka sa berú!</title>
-    <!-- <title>Ram & Antara getting hitched!</title> -->
     <meta name="description" content="We would like to invite you to our big day.">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#ffffff">
     <meta property="og:title" content="Kubko & Lenka sa berú!">
     <meta property="og:description" content="We would like to invite you to our big day.">
-    <meta property="og:image" content="https://wedding.ramswaroop.me/img/header-photo.jpg">
+    <meta property="og:image" content="https://wedding.ramswaroop.me/img/header-photo.jpg"> 
+    <!-- TODO zmeniy og:image -->
     <meta property="og:type" content="website">
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
     <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
@@ -45,6 +45,8 @@
         }
     </script>
 
+<!-- CSS files -->
+    <link rel="stylesheet" href="css/uploadBtn.css">
     <link rel="stylesheet" href="css/normalize.min.css">
     <link rel="stylesheet" href="css/bootstrap.min.css">
     <link rel="stylesheet" href="css/jquery.fancybox.css">
@@ -120,9 +122,18 @@
 </section>
 
 <!-- ======= FORMULÁR ======= -->
-<input id="file" type="file" accept="image/*" multiple>
-<button id="uploadBtn" disabled>Nahrať vybrané obrázky</button>
-<div id="status"></div>
+<div class="uploader">
+  <!-- skrytý input, spúšťaný cez label -->
+  <input id="file" type="file" accept="image/*" multiple class="visually-hidden">
+  
+  <div class="actions">
+    <label for="file" class="btn outline">Prehľadávať…</label>
+    <button id="uploadBtn" class="btn primary" disabled>Nahrať vybrané obrázky</button>
+  </div>
+
+  <div id="uploadStatus" class="status">Nie sú zvolené súbory.</div>
+</div>
+
 
 <!-- TODO add github domenu do corsu do supabasu edge funkcie -->
 
@@ -134,7 +145,22 @@
     /* ---------- 1. DOM prvky ---------- */
     const fileInput = document.getElementById("file");
     const uploadBtn = document.getElementById("uploadBtn");
-    const statusEl  = document.getElementById("status");
+    const statusEl  = document.getElementById("uploadStatus");
+
+    function setNone()  { uploadStatus.textContent = "Nie sú zvolené súbory."; }
+    function setCount(n){ uploadStatus.textContent = n === 1 ? "Vybraný 1 súbor." : `Vybrané ${n} súbory.`; }
+    function disableBtn(){ uploadBtn.disabled = true;  uploadBtn.setAttribute("disabled",""); }
+    function enableBtn(){  uploadBtn.disabled = false; uploadBtn.removeAttribute("disabled"); }
+
+    function refreshUI() {  // <— volaj vždy, keď sa môže zmeniť počet
+      const n = fileInput.files?.length || 0;
+      if (n > 0) { enableBtn(); setCount(n); }
+      else       { disableBtn(); setNone(); }
+    }
+
+    fileInput.addEventListener("change", refreshUI);    // <— aktualizuje text hneď po výbere
+    refreshUI();              // <— inicializácia pri štarte
+
 
     /* ---------- 2. Konštanty ---------- */
     const SUPABASE_URL = "https://byowsxlaoljqrbllbiad.supabase.co";
@@ -270,8 +296,8 @@
 <script type="module">
   import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-  const SUPABASE_URL = "TODO URL";
-  const ANON_KEY     = "TODO TOKEN";
+  const SUPABASE_URL = "https://byowsxlaoljqrbllbiad.supabase.co";
+  const ANON_KEY     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5b3dzeGxhb2xqcXJibGxiaWFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMwMzcxNzAsImV4cCI6MjA2ODYxMzE3MH0.dOBoxQqiMBYT5PIbwQUEq-rVBIO5pp1IjG89EO04LD4";
 
   const supabase = createClient(SUPABASE_URL, ANON_KEY);
 
@@ -644,24 +670,84 @@
 <script src="js/jquery.mb.YTPlayer.min.js"></script>
 <script src="js/vendor/ouical.js"></script>
 <script src="js/scripts.min.js"></script>
-<!-- <script async defer
-        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBlPw3GQYI3faa_9mRE6plWuM7xNEmrwH0&callback=initMap"></script> -->
-<!-- Google Analytics -->
-<!-- <script>
-    (function (i, s, o, g, r, a, m) {
-        i['GoogleAnalyticsObject'] = r;
-        i[r] = i[r] || function () {
-            (i[r].q = i[r].q || []).push(arguments)
-        }, i[r].l = 1 * new Date();
-        a = s.createElement(o),
-            m = s.getElementsByTagName(o)[0];
-        a.async = 1;
-        a.src = g;
-        m.parentNode.insertBefore(a, m)
-    })(window, document, 'script', 'https://www.google-analytics.com/analytics.js', 'ga');
-    ga('create', 'UA-46465113-4', 'auto');
-    ga('send', 'pageview');
-</script> -->
+
+<!-- ---------------------------------- -->
+<!-- STYLES -->
+
+<!-- UPLOAD BTNS -->
+<!-- <style>
+  :root{
+    --brand: #6c5ce7;     /* hlavná farba */
+    --brand-2: #a29bfe;   /* svetlejší odtieň */
+    --fg: #1f2937;        /* tmavý text */
+    --muted: #6b7280;     /* sivý text */
+    --panel: rgba(255,255,255,.75);
+  }
+  /* panel na strede */
+  .uploader{
+    max-width: 640px;
+    margin: 48px auto;
+    padding: 24px;
+    border-radius: 16px;
+    background: var(--panel);
+    backdrop-filter: blur(6px);
+    box-shadow: 0 10px 30px rgba(0,0,0,.08);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .actions{
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+  }
+  /* pekné tlačidlá */
+  .btn{
+    appearance: none;
+    border: 0;
+    border-radius: 12px;
+    padding: 10px 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform .06s ease, box-shadow .2s ease, background .2s ease;
+    user-select: none;
+  }
+  .btn.primary{
+    color: #fff;
+    background: linear-gradient(135deg, var(--brand), var(--brand-2));
+    box-shadow: 0 8px 20px rgba(108,92,231,.25);
+  }
+  .btn.primary:hover{ transform: translateY(-1px); }
+  .btn.primary:active{ transform: translateY(0); }
+
+  .btn.outline{
+    color: var(--brand);
+    background: #fff;
+    border: 2px solid var(--brand);
+  }
+  .btn.outline:hover{ background: #f5f7ff; }
+  .btn[disabled]{
+    opacity: .55;
+    cursor: not-allowed;
+    filter: grayscale(25%);
+    box-shadow: none;
+  }
+
+  .status{ color: var(--muted); font-size: 0.95rem; }
+
+  /* skrytý file input, ale prístupný cez label[for] */
+  .visually-hidden{
+    position: absolute !important;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0);
+    white-space: nowrap; border: 0;
+  }
+</style> -->
+
 </body>
 </html>
 <!-- 

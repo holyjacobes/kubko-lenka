@@ -57,6 +57,7 @@
 </head>
 <body id="top">
 
+
 <section class="hero">
     <section class="navigation">
         <header>
@@ -89,7 +90,7 @@
                 <div class="hero-content text-center">
                     <!-- <h1>Lenka & Kubko</h1> -->
                     <img src="img/lenka-kubo-logo-long.png">
-                    <p class="intro">Berieme sa!</p>
+                    <p class="intro"> <span class="fa fa-heart pulse2"></span> Vitajte na najsamlepšom vešeľu <span class="fa fa-heart pulse2"></span></p>
                     <!-- <a href="#" class="btn btn-fill btn-large btn-margin-right">Scroll Down</a> -->
                 </div>
             </div>
@@ -112,11 +113,228 @@
                 <h3>Berieme sa! Juchúú!</h3>
                 <!-- <p>The dates are 27<sup>th</sup> & 28<sup>th</sup> of November '17 and we would like you to be a part of
                     it.</p> -->
-                <div class="share-bar"></div>
+                <!-- <div class="share-bar"></div> -->
             </div>
         </div>
     </div>
 </section>
+
+<!-- ======= FORMULÁR ======= -->
+<input id="file" type="file" accept="image/*" multiple>
+<button id="uploadBtn" disabled>Nahrať vybrané obrázky</button>
+<div id="status"></div>
+
+<!-- TODO add github domenu do corsu do supabasu edge funkcie -->
+
+<!-- ======= SCRIPT ======= -->
+<script type="module">
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+  window.addEventListener("DOMContentLoaded", () => {
+    /* ---------- 1. DOM prvky ---------- */
+    const fileInput = document.getElementById("file");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const statusEl  = document.getElementById("status");
+
+    /* ---------- 2. Konštanty ---------- */
+    const SUPABASE_URL = "https://byowsxlaoljqrbllbiad.supabase.co";
+    const ANON_KEY     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5b3dzeGxhb2xqcXJibGxiaWFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMwMzcxNzAsImV4cCI6MjA2ODYxMzE3MH0.dOBoxQqiMBYT5PIbwQUEq-rVBIO5pp1IjG89EO04LD4";
+    const BUCKET       = "kubko-lenka";
+
+    /* ---------- 3. Public klient (na volanie edge funkcie) ---------- */
+    const supabasePublic = createClient(SUPABASE_URL, ANON_KEY);
+
+    /* ---------- 4. QR token z URL ---------- */
+    const params  = new URLSearchParams(location.search);
+    const qrToken = params.get("token");
+    if (!qrToken) {
+      alert("Nemáš plný prístup na nahrávanie fotiek - oskenuj najbližší QR kód");
+      return;
+    }
+
+    /* ---------- 5. Zabezpečený klient s JWT (Bearer) ---------- */
+    let supabaseJwt = null; // cache klienta s krátkodobým JWT
+
+    async function getJwtClient(forceRefresh = false) {
+      if (supabaseJwt && !forceRefresh) return supabaseJwt;
+
+    //   const { data, error } = await supabase.functions.invoke(
+    //     `exchange-token?token=${encodeURIComponent(qrToken)}`
+    //   );
+
+      // Ak by sa používala funkcia na serveri, mohol by vyzerať takto:
+      // const { data, error } = await supabasePublic.functions.invoke("exchange-token", {
+      //   query: { token: qrToken }
+      // });
+      const { data, error } = await supabasePublic.functions.invoke(`exchange-token?token=${encodeURIComponent(qrToken)}`);
+      if (error || !data?.access_token) {
+        throw new Error(error?.message || "Token exchange failed");
+      }
+
+      supabaseJwt = createClient(SUPABASE_URL, ANON_KEY, {
+        global: { headers: { Authorization: `Bearer ${data.access_token}` } }
+      });
+      return supabaseJwt;
+    }
+
+    /* ---------- 6. UI pomocné funkcie ---------- */
+    function updateButtonState() {
+      if (fileInput.files && fileInput.files.length > 0) {
+        uploadBtn.disabled = false;
+        uploadBtn.removeAttribute("disabled");
+      } else {
+        uploadBtn.disabled = true;
+        uploadBtn.setAttribute("disabled", "");
+      }
+    }
+    fileInput.addEventListener("change", updateButtonState);
+
+    function isLikelyImage(file) {
+      return file && file.type && file.type.startsWith("image/");
+    }
+    function safeName(name) {
+      return name.toLowerCase().replace(/[^a-z0-9._-]+/g, "_").slice(0, 80);
+    }
+    function buildOriginalPath(file) {
+      const ts  = Date.now();
+      const rnd = Math.random().toString(36).slice(2, 8);
+      return `original/${ts}-${rnd}-${safeName(file.name)}`;
+    }
+
+    /* ---------- 7. Upload ---------- */
+    uploadBtn.addEventListener("click", async () => {
+      if (!fileInput.files || fileInput.files.length === 0) {
+        alert("Najprv vyber aspoň jeden obrázok.");
+        return;
+      }
+
+      uploadBtn.disabled = true;
+      uploadBtn.setAttribute("disabled", "");
+      statusEl.textContent = "Nahrávam obrázky…";
+
+      try {
+        let client = await getJwtClient();
+
+        for (const file of fileInput.files) {
+          if (!isLikelyImage(file)) {
+            alert(`„${file.name}“ nie je obrázok.`);
+            continue;
+          }
+
+          const path = buildOriginalPath(file);
+
+          // Prvý pokus o upload s aktuálnym JWT
+          let { error } = await client.storage.from(BUCKET).upload(path, file, {
+            upsert: false,
+            cacheControl: "3600",
+            contentType: file.type || "application/octet-stream"
+          });
+
+          // Ak by JWT medzičasom expiroval → refrešni a skús znova
+          if (error && (error.statusCode === 401 || error.statusCode === 403)) {
+            client = await getJwtClient(true);
+            ({ error } = await client.storage.from(BUCKET).upload(path, file, {
+              upsert: false,
+              cacheControl: "3600",
+              contentType: file.type || "application/octet-stream"
+            }));
+          }
+
+          if (error) {
+            console.error("Upload error:", error);
+            alert(`Upload zlyhal pre „${file.name}“. (${error.message || error})`);
+          }
+        }
+
+        statusEl.textContent = "✅ Obrázky úspešne nahrané!";
+        fileInput.value = "";        // resetni input
+        updateButtonState();         // znovu zakáž tlačidlo, kým nevyberú ďalšie súbory
+      } catch (err) {
+        console.error(err);
+        alert("Nahrávanie zlyhalo – skús znova.");
+        statusEl.textContent = "";
+      }
+    });
+  });
+</script>
+
+<!-- NAHRAVANIE -->
+<!-- GALÉRIA -->
+<div id="status" style="margin:.5rem 0;color:#666">Načítavam fotky…</div>
+<div id="gallery" style="
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+  gap:12px;
+"></div>
+
+<script type="module">
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+  const SUPABASE_URL = "TODO URL";
+  const ANON_KEY     = "TODO TOKEN";
+
+  const supabase = createClient(SUPABASE_URL, ANON_KEY);
+
+  const statusEl = document.getElementById("status");
+  const gallery  = document.getElementById("gallery");
+
+  function renderPhotos(urls = []) {
+    gallery.innerHTML = "";
+    if (!urls.length) {
+      statusEl.textContent = "Zatiaľ tu nie sú žiadne fotky.";
+      return;
+    }
+    statusEl.textContent = "";
+    for (const url of urls) {
+      const img = document.createElement("img");
+      img.src = url;
+      img.loading = "lazy";
+      img.decoding = "async";
+      img.alt = "Svadobná fotka";
+      img.style.width = "100%";
+      img.style.height = "auto";
+      img.style.borderRadius = "8px";
+      img.referrerPolicy = "no-referrer"; // len pre istotu
+      gallery.appendChild(img);
+    }
+  }
+
+  async function loadRandomPhotos() {
+    try {
+      const params  = new URLSearchParams(location.search);
+      const qrToken = params.get("token");
+      if (!qrToken) {
+        statusEl.textContent = "Chýba prístupový token – oskenuj QR kód.";
+        return;
+      }
+
+      // Dôležité: posielame token v QUERY STRINGU
+      const { data, error } = await supabase.functions.invoke(
+        `random-photos?token=${encodeURIComponent(qrToken)}`
+      );
+
+      if (error) {
+        console.error(error);
+        statusEl.textContent = "Nepodarilo sa načítať fotky.";
+        return;
+      }
+
+      const urls = (data?.photos || [])
+        .filter(p => p.url)
+        .map(p => p.url);
+
+      renderPhotos(urls);
+    } catch (e) {
+      console.error(e);
+      statusEl.textContent = "Nastala chyba pri načítaní fotiek.";
+    }
+  }
+
+  // Auto-load po načítaní DOMu
+  window.addEventListener("DOMContentLoaded", loadRandomPhotos);
+</script>
+
+
 
 <section id="intro">
     <div class="container">
@@ -426,10 +644,10 @@
 <script src="js/jquery.mb.YTPlayer.min.js"></script>
 <script src="js/vendor/ouical.js"></script>
 <script src="js/scripts.min.js"></script>
-<script async defer
-        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBlPw3GQYI3faa_9mRE6plWuM7xNEmrwH0&callback=initMap"></script>
+<!-- <script async defer
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBlPw3GQYI3faa_9mRE6plWuM7xNEmrwH0&callback=initMap"></script> -->
 <!-- Google Analytics -->
-<script>
+<!-- <script>
     (function (i, s, o, g, r, a, m) {
         i['GoogleAnalyticsObject'] = r;
         i[r] = i[r] || function () {
@@ -443,6 +661,10 @@
     })(window, document, 'script', 'https://www.google-analytics.com/analytics.js', 'ga');
     ga('create', 'UA-46465113-4', 'auto');
     ga('send', 'pageview');
-</script>
+</script> -->
 </body>
 </html>
+<!-- 
+
+
+

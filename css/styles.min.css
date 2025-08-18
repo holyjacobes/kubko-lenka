@@ -416,8 +416,9 @@ header .member-actions {
 .intro-extra {
   font-family: 'Pacifico', cursive;
   font-size: 2rem;
-  background: linear-gradient(45deg, #ff4081, #ffcc80);
+  background: linear-gradient(45deg, #f0d03c, #f0d03c);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   font-weight: bold;
   text-shadow: 1px 1px 3px rgba(0,0,0,0.2);
@@ -430,7 +431,7 @@ header .member-actions {
   transform: translateX(-50%);
   width: 120%;
   height: 10px;
-  background: linear-gradient(90deg, #f6d365, #fda085);
+  background: linear-gradient(90deg, #00ffbf, #0058fa);
   border-radius: 6px;
   z-index: -1;
 }

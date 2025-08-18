@@ -70,6 +70,7 @@
                     <nav>
                         <ul class="primary-nav">
                             <li><a href="#instagram">Nahrať fotky</a></li>
+                            <li><a href="#digital-odkaz">Odkaz</a></li>
                             <li><a href="#intro">Náš príbeh</a></li>
                             <!-- <li><a href="#events">Kde?</a></li> -->
                             <!-- <li><a href="#eng-pics">Zásnuby</a></li> -->
@@ -287,9 +288,8 @@
 
 <script type="module">
   import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-  const SUPABASE_URL = "https://byowsxlaoljqrbllbiad.supabase.co";
-  const ANON_KEY     = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ5b3dzeGxhb2xqcXJibGxiaWFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMwMzcxNzAsImV4cCI6MjA2ODYxMzE3MH0.dOBoxQqiMBYT5PIbwQUEq-rVBIO5pp1IjG89EO04LD4";
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+  import { SUPABASE_URL, ANON_KEY, BUCKET, EXCHANGE_FN } from "./js/app-config.js";
 
   const supabase = createClient(SUPABASE_URL, ANON_KEY);
 
@@ -353,6 +353,34 @@
 </script>
 
 
+<!-- ======= DIGITÁLNY ODKAZ ======= -->
+<section id="digital-odkaz" class="section-padding">
+  <div class="container">
+    <div class="row">
+      <div class="col-md-12 text-center">
+        <h3>💌 Zanechaj nám digitálny odkaz</h3>
+        <p>Chceš nám niečo odkázať? Sem s tým!</p>
+      </div>
+    </div>
+
+    <form id="odkazForm" class="odkaz-form" style="max-width:680px;margin:0 auto" novalidate>
+      <div class="form-group">
+        <label for="odkazName">Meno (nepovinné)</label>
+        <input id="odkazName" class="form-control" type="text" maxlength="120" placeholder="Tvoje meno">
+      </div>
+
+      <div class="form-group">
+        <label for="odkazMessage">Odkaz</label>
+        <textarea id="odkazMessage" class="form-control" rows="5" maxlength="10000" required
+          placeholder="Napíš odkaz pre novomanželov…"></textarea>
+        <small id="odkazCounter" class="help-block" style="display:block;margin-top:4px;">0 / 10 000</small>
+      </div>
+
+      <button id="odkazSubmit" type="submit" class="btn primary">Odoslať odkaz</button>
+      <div id="odkazStatus" style="margin-top:.5rem;color:#666"></div>
+    </form>
+  </div>
+</section>
 
 <section id="intro">
     <div class="container">
@@ -450,6 +478,129 @@ Pocit, že to chce znova zmenu, chcem ísť späť na VŠ. Lenka neváhala ani s
 <script src="js/jquery.mb.YTPlayer.min.js"></script>
 <script src="js/vendor/ouical.js"></script>
 <script src="js/scripts.min.js"></script>
+
+<script type="module">
+  import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+  import { SUPABASE_URL, ANON_KEY, BUCKET, EXCHANGE_FN } from "./js/app-config.js";
+
+  // --- Zdieľaný helper: vyžiadanie krátkodobého JWT cez tvoj exchange-token
+  let supabaseJwt = null;
+
+  async function getJwtClient(forceRefresh = false) {
+    if (supabaseJwt && !forceRefresh) return supabaseJwt;
+
+    const supabasePublic = createClient(SUPABASE_URL, ANON_KEY);
+
+    const params  = new URLSearchParams(location.search);
+    const qrToken = params.get("token");
+    if (!qrToken) {
+      throw new Error("Chýba prístupový token – oskenuj QR kód.");
+    }
+
+    // DÔLEŽITÉ: token posielame v query stringu (ako už používaš inde)
+    const { data, error } = await supabasePublic.functions.invoke(
+      `exchange-token?token=${encodeURIComponent(qrToken)}`
+    );
+    if (error || !data?.access_token) {
+      throw new Error(error?.message || "Token exchange failed");
+    }
+
+    supabaseJwt = createClient(SUPABASE_URL, ANON_KEY, {
+      global: { headers: { Authorization: `Bearer ${data.access_token}` } }
+    });
+    return supabaseJwt;
+  }
+
+  // --- DOM prvky
+  const form    = document.getElementById("odkazForm");
+  const nameEl  = document.getElementById("odkazName");
+  const msgEl   = document.getElementById("odkazMessage");
+  const counter = document.getElementById("odkazCounter");
+  const status  = document.getElementById("odkazStatus");
+  const btn     = document.getElementById("odkazSubmit");
+
+  // --- UX: live počítadlo znakov + zapni/vypni tlačidlo
+  const LIMIT = 10000;
+  function updateCounter() {
+    const len = (msgEl.value || "").length;
+    counter.textContent = `${len} / ${LIMIT}`;
+    if (len === 0 || len > LIMIT) {
+      btn.setAttribute("disabled", "");
+    } else {
+      btn.removeAttribute("disabled");
+    }
+  }
+  msgEl.addEventListener("input", updateCounter);
+  updateCounter();
+
+  function setStatus(text, ok = true) {
+    status.textContent = text;
+    status.style.color = ok ? "#2e7d32" : "#c62828";
+  }
+
+  // --- Submit handler
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    setStatus("");
+
+    const name    = (nameEl.value || "").trim();
+    const message = (msgEl.value || "").trim();
+
+    if (!message) {
+      setStatus("Napíš prosím odkaz 😊", false);
+      return;
+    }
+    if (message.length > LIMIT) {
+      setStatus("Odkaz je príliš dlhý (max. 10 000 znakov).", false);
+      return;
+    }
+
+    btn.setAttribute("disabled", "");
+    setStatus("Odosielam…");
+
+    // Zabaliť volanie na edge funkciu + 1x retry pri expirovanom JWT
+    async function callSubmit(client) {
+      return client.functions.invoke("submit-odkaz", { body: { name, message } });
+    }
+
+    try {
+      let client = await getJwtClient();
+      let { data, error } = await callSubmit(client);
+
+      // Ak by JWT medzitým expiroval → obnov a skús znova
+      if ((error && (error.status === 401 || error.status === 403)) || (data && data.error === "JWT expired")) {
+        client = await getJwtClient(true);
+        ({ data, error } = await callSubmit(client));
+      }
+
+      if (error || data?.error) {
+        setStatus(data?.error || error?.message || "Nepodarilo sa odoslať odkaz.", false);
+        return;
+      }
+
+      // Úspech
+      setStatus("✅ Ďakujeme!");
+      form.reset();
+      updateCounter();
+
+      // BONUS UX: predvyplň meno nabudúce (lokálne)
+      if (name) {
+        try { localStorage.setItem("odkaz_name", name); } catch {}
+      }
+    } catch (err) {
+      console.error(err);
+      setStatus("Chyba pri odosielaní. Skús to prosím znova.", false);
+    } finally {
+      btn.removeAttribute("disabled");
+    }
+  });
+
+  // Predvyplň meno, ak sme si ho uložili
+  try {
+    const saved = localStorage.getItem("odkaz_name");
+    if (saved) { nameEl.value = saved; }
+  } catch {}
+</script>
 
 
 </body>
